@@ -30,6 +30,7 @@ class BT extends JSONRPC {
         this._resetCallback = resetCallback;
         this._discoverTimeoutID = null;
         this._extensionId = extensionId;
+        this._extensionName = '';  // 새로 추가한 변수
         this._peripheralOptions = peripheralOptions;
         this._messageCallback = messageCallback;
         this._runtime = runtime;
@@ -60,19 +61,41 @@ class BT extends JSONRPC {
      * @param {string} pin - an optional pin for pairing
      */
     connectPeripheral (id, pin = null) {
-        const params = {peripheralId: id};
-        if (pin) {
-            params.pin = pin;
+        const peripheral = this._availablePeripherals[id];
+        if (!peripheral) {
+            console.log("peripheral err :", peripheral);
+            return; // 해당 아이디에 맞는 장치가 없으면 종료
         }
-        this.sendRemoteRequest('connect', params)
-            .then(() => {
-                this._connected = true;
-                this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
-                this._connectCallback();
-            })
-            .catch(e => {
-                this._handleRequestError(e);
-            });
+    
+        const peripheralName = peripheral.name;
+        console.log("peripheralName :", peripheralName);
+        if (peripheralName.startsWith('iCOBOT-')) {
+            const match = peripheralName.match(/\d+/); // 정규표현식을 사용하여 숫자 추출
+            console.log("match:", match);
+            if (match) {
+                const extractedNumber = match[0];
+                const generatedPin = extractedNumber.repeat(2); // 숫자를 2번 반복하여 PIN 생성
+                console.log("Generated PIN:", generatedPin);
+    
+                const params = {peripheralId: id, pin: generatedPin};
+                this.sendRemoteRequest('connect', params)
+                    .then(() => {
+                        this._connected = true;
+                        this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
+                        this._connectCallback();
+                        // 연결이 성공했을 때 추가로 수행할 작업을 여기에 추가
+                        console.log("Bluetooth connection successful!");
+                    })
+                    .catch(e => {
+                        console.log("Bluetooth connection fall!");
+                        this._handleRequestError(e);
+                    });
+            } else {
+                console.log("Failed to extract number from peripheral name");
+            }
+        } else {
+            console.log("Peripheral name does not match the expected pattern");
+        }
     }
 
     /**
@@ -120,6 +143,7 @@ class BT extends JSONRPC {
         switch (method) {
         case 'didDiscoverPeripheral':
             this._availablePeripherals[params.peripheralId] = params;
+            this._extensionName = params.name;  // params.name을 _extensionName 변수에 저장
             this._runtime.emit(
                 this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
                 this._availablePeripherals
@@ -130,6 +154,7 @@ class BT extends JSONRPC {
             break;
         case 'userDidPickPeripheral':
             this._availablePeripherals[params.peripheralId] = params;
+            this._extensionName = params.name;  // params.name을 _extensionName 변수에 저장
             this._runtime.emit(
                 this._runtime.constructor.USER_PICKED_PERIPHERAL,
                 this._availablePeripherals
@@ -148,6 +173,7 @@ class BT extends JSONRPC {
             break;
         case 'didReceiveMessage':
             this._messageCallback(params); // TODO: refine?
+            console.log("Bt params : ", params);
             break;
         default:
             return 'nah';
